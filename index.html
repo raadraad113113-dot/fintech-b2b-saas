@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>منصة التدفق المالي الذكية | B2B Supply Chain & Invoice Financing</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- مكتبة الاتصال بقاعدة البيانات السحابية Supabase -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Tajawal', sans-serif; }
@@ -31,18 +33,18 @@
                     <span>لوحة التحكم الرئيسية</span>
                 </a>
                 <a href="#" class="flex items-center justify-between px-4 py-3 rounded-xl text-slate-300 hover:bg-navy-800/60">
-                    <span>فواتير بانتظار التمويل</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">12</span>
+                    <span>فواتير ZATCA المتوافقة</span>
+                    <span id="dbInvoiceCount" class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300">متصل</span>
                 </a>
                 <a href="#" class="flex items-center justify-between px-4 py-3 rounded-xl text-slate-300 hover:bg-navy-800/60">
-                    <span>الجهات الممولة (SAMA)</span>
-                    <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">5 بوابات</span>
+                    <span>جهات التمويل (SAMA)</span>
+                    <span id="dbFinancierCount" class="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">جاري التحميل...</span>
                 </a>
             </nav>
         </div>
         <div class="p-4 m-4 rounded-xl bg-navy-800/70 border border-navy-700 text-xs">
             <div class="text-emerald-400 font-semibold mb-1">مزود تقني معتمد (Escrow-Free)</div>
-            <p class="text-slate-300 text-[11px]">كافة التدفقات النقدية تتم مباشرة من الممول إلى المنشأة.</p>
+            <p class="text-slate-300 text-[11px]">قاعدة البيانات السحابية متصلة ومحمية بـ PostgreSQL.</p>
         </div>
     </aside>
 
@@ -50,14 +52,17 @@
         <header class="h-20 bg-navy-900/80 border-b border-navy-700 flex items-center justify-between px-8 sticky top-0 z-30">
             <div>
                 <h2 class="text-xl font-bold text-white">مركز العمليات وإحالة التمويل</h2>
-                <p class="text-xs text-slate-400">تحديث فوري للحركات والتحقق عبر بوابة ZATCA</p>
+                <p class="text-xs text-slate-400">متصل سحابياً بقاعدة البيانات المركزية</p>
             </div>
-            <div class="bg-navy-800 border border-navy-700 px-3 py-1.5 rounded-lg text-xs text-emerald-400 font-bold">
-                ZATCA Phase 2: متصل ونشط
+            <div class="flex items-center gap-3">
+                <div id="dbStatusBadge" class="bg-navy-800 border border-emerald-500/40 px-3 py-1.5 rounded-lg text-xs text-emerald-400 font-bold flex items-center gap-2">
+                    <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span> قاعدة البيانات: متصلة
+                </div>
             </div>
         </header>
 
         <div class="p-8 space-y-6">
+            <!-- بطاقات المؤشرات -->
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
                 <div class="bg-navy-900 border border-navy-700 rounded-2xl p-5">
                     <p class="text-xs text-slate-400">إجمالي الفواتير الممولة</p>
@@ -72,11 +77,20 @@
                     <h3 class="text-2xl font-black text-cyan-300 mt-2">138,375 <span class="text-xs text-slate-300">ر.س</span></h3>
                 </div>
                 <div class="bg-navy-900 border border-navy-700 rounded-2xl p-5">
-                    <p class="text-xs text-slate-400">مطابقة ZATCA</p>
-                    <h3 class="text-2xl font-black text-white mt-2">99.4%</h3>
+                    <p class="text-xs text-slate-400">حالة الربط السحابي</p>
+                    <h3 class="text-2xl font-black text-emerald-400 mt-2">نشط (Active)</h3>
                 </div>
             </div>
 
+            <!-- قائمة جهات التمويل المستخرجة مباشرة من قاعدة بياناتك -->
+            <div class="bg-navy-900 border border-navy-700 rounded-2xl p-6">
+                <h4 class="font-bold text-white text-base mb-4">جهات التمويل المرخصة المربوطة سحابياً (SAMA Partners)</h4>
+                <div id="financiersList" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="p-4 rounded-xl bg-navy-800 border border-navy-700 text-slate-400 text-xs">جاري جلب البيانات من السحابة...</div>
+                </div>
+            </div>
+
+            <!-- محاكي الإيرادات التفاعلي -->
             <div class="bg-navy-900 border border-navy-700 rounded-2xl p-6">
                 <h4 class="font-bold text-white text-base mb-4">محاكي إيراد المنصة الفوري</h4>
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
@@ -103,6 +117,37 @@
     </main>
 
     <script>
+        // إعداد الاتصال بقاعدة البيانات السحابية Supabase (مدمج تلقائياً)
+        const SUPABASE_URL = 'https://wtcircljuwqrwpdyagdb.supabase.co';
+        const SUPABASE_ANON_KEY = 'Sb_publishable_HZ_0CqpgOLT4WPPKy4gkGQ_sRTSXQca';
+        
+        const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        async function fetchFinanciers() {
+            try {
+                const { data, error } = await supabaseClient.from('financiers').select('*');
+                if (error) throw error;
+                
+                const container = document.getElementById('financiersList');
+                document.getElementById('dbFinancierCount').innerText = data.length + ' جهات';
+                
+                if(data && data.length > 0) {
+                    container.innerHTML = data.map(f => `
+                        <div class="p-4 rounded-xl bg-navy-800 border border-emerald-500/30 space-y-2">
+                            <div class="font-bold text-white text-sm">${f.name_ar}</div>
+                            <div class="text-[11px] text-slate-400">رخصة SAMA: ${f.license_number}</div>
+                            <div class="text-xs text-emerald-400 font-semibold">عمولة الإحالة: ${f.referral_commission_rate}%</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error(err);
+                document.getElementById('financiersList').innerHTML = '<div class="text-red-400 text-xs">تعذر الاتصال بالسحابة</div>';
+            }
+        }
+
+        fetchFinanciers();
+
         function calculateRevenue() {
             const amount = parseFloat(document.getElementById('calcAmount').value) || 0;
             const apr = parseFloat(document.getElementById('calcApr').value) || 0;
